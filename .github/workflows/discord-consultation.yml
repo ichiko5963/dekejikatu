@@ -29,7 +29,15 @@ jobs:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_CHANNEL_ID: ${{ secrets.CONSULTATION }}
           CONSULTATION_ROLE_ID: ${{ secrets.CONSULTATION_ROLE_ID }}
-        run: node DEJIRYU_DISCORD/scripts/discord-consultation.js || echo "consultation failed" > DEJIRYU_DISCORD/logs/consultation.exit
+        run: |
+          mkdir -p DEJIRYU_DISCORD/logs
+          if [ -f DEJIRYU_DISCORD/scripts/discord-consultation.js ]; then
+            node DEJIRYU_DISCORD/scripts/discord-consultation.js || echo "consultation failed" > DEJIRYU_DISCORD/logs/consultation.exit
+          elif [ -f scripts/discord-consultation.js ]; then
+            node scripts/discord-consultation.js || echo "consultation failed" > DEJIRYU_DISCORD/logs/consultation.exit
+          else
+            echo "consultation script not found"; exit 1
+          fi
 
       - name: Upload logs on failure
         if: failure()

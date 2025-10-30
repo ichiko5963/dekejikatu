@@ -28,7 +28,15 @@ jobs:
         env:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_CHANNEL_ID: ${{ secrets.ACHIEVEMENTS }}
-        run: node DEJIRYU_DISCORD/scripts/discord-achievements.js || echo "achievements failed" > DEJIRYU_DISCORD/logs/achievements.exit
+        run: |
+          mkdir -p DEJIRYU_DISCORD/logs
+          if [ -f DEJIRYU_DISCORD/scripts/discord-achievements.js ]; then
+            node DEJIRYU_DISCORD/scripts/discord-achievements.js || echo "achievements failed" > DEJIRYU_DISCORD/logs/achievements.exit
+          elif [ -f scripts/discord-achievements.js ]; then
+            node scripts/discord-achievements.js || echo "achievements failed" > DEJIRYU_DISCORD/logs/achievements.exit
+          else
+            echo "achievements script not found"; exit 1
+          fi
 
       - name: Upload logs on failure
         if: failure()

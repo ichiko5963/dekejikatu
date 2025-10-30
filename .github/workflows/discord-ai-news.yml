@@ -31,7 +31,14 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           NEWS_API_KEY: ${{ secrets.NEWS_API_KEY_ENV }}
         run: |
-          node DEJIRYU_DISCORD/scripts/discord-ai-news.js || echo "ai-news failed with code $?" > DEJIRYU_DISCORD/logs/ainews.exit
+          mkdir -p DEJIRYU_DISCORD/logs
+          if [ -f DEJIRYU_DISCORD/scripts/discord-ai-news.js ]; then
+            node DEJIRYU_DISCORD/scripts/discord-ai-news.js || echo "ai-news failed with code $?" > DEJIRYU_DISCORD/logs/ainews.exit
+          elif [ -f scripts/discord-ai-news.js ]; then
+            node scripts/discord-ai-news.js || echo "ai-news failed with code $?" > DEJIRYU_DISCORD/logs/ainews.exit
+          else
+            echo "ai-news script not found"; exit 1
+          fi
 
       - name: Upload logs on failure
         if: failure()

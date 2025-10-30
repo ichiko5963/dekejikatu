@@ -35,7 +35,14 @@ jobs:
           DISCORD_CHANNEL_ID: ${{ secrets.SELF_INTRO }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          node DEJIRYU_DISCORD/scripts/discord-selfintro.js || echo "selfintro failed with code $?" > DEJIRYU_DISCORD/logs/selfintro.exit
+          mkdir -p DEJIRYU_DISCORD/logs
+          if [ -f DEJIRYU_DISCORD/scripts/discord-selfintro.js ]; then
+            node DEJIRYU_DISCORD/scripts/discord-selfintro.js || echo "selfintro failed with code $?" > DEJIRYU_DISCORD/logs/selfintro.exit
+          elif [ -f scripts/discord-selfintro.js ]; then
+            node scripts/discord-selfintro.js || echo "selfintro failed with code $?" > DEJIRYU_DISCORD/logs/selfintro.exit
+          else
+            echo "selfintro script not found"; exit 1
+          fi
 
       - name: Upload logs on failure
         if: failure()
