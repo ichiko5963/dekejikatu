@@ -27,7 +27,7 @@ jobs:
 
       - name: Install
         run: |
-          npm ci --prefix DEJIRYU_DISCORD
+          npm install --prefix DEJIRYU_DISCORD --no-audit --no-fund
 
       - name: Post AI news
         env:
