@@ -13,9 +13,9 @@ function log(line){ fs.mkdirSync(LOG_DIR,{recursive:true}); fs.appendFileSync(LO
 function assertEnv(n,v){ if(!v) throw new Error(`Missing env: ${n}`); }
 
 const VARIATIONS = [
-  '質問はないか？デジリューの診察時間だぞ。遠慮なく呼んでくれよな！',
-  'お困りごとはないか？みんなの知恵を集めて一歩進めよう。',
-  '詰まってるなら、その場で聞けばOK。軽い相談でもウェルカムだ！'
+  'やっほー、デジリューだよ。いま気になってること、ここで軽く聞いてみない？まずは一言でもOKだぞ。',
+  'ちょっと詰まったらここで深呼吸。状況だけでも書いてくれたら、みんなで次の一歩を見つけよう。',
+  '質問は小分けでOK。スクショ1枚でも、やりたいゴールでも歓迎だ。気楽に投げてみて！'
 ];
 
 async function post(content){
@@ -33,7 +33,7 @@ async function post(content){
     assertEnv('DISCORD_CHANNEL_ID', CHANNEL_ID);
     const msg = VARIATIONS[Math.floor(Math.random()*VARIATIONS.length)];
     const ping = ROLE_ID ? `<@&${ROLE_ID}>\n` : '';
-    await post(`${ping}デジリューからのおたずねタイム！\n${msg}\n思いついた瞬間に投げてくれていいんだぞ。`);
+    await post(`${ping}${msg}\n思いついたタイミングで一言からどうぞ。`);
     log('posted consultation prompt');
   }catch(e){
     log(`ERROR: ${e.stack||e.message}`);

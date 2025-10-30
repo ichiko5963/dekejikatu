@@ -66,20 +66,20 @@ function buildFallbackSummary(nonBot) {
   const start = new Date(now.getTime() - 4 * 24 * 3600 * 1000);
   if (byUser.size === 0) {
     return (
-      `デジリューが巡回完了！${start.getMonth() + 1}/${start.getDate()}〜${now.getMonth() + 1}/${now.getDate()}の間に新しい自己紹介はなかったぞ。\n` +
-      'まだ名乗ってない仲間は、どしどし自己紹介してくれよな！'
+      `やっほー、デジリューだよ。${start.getMonth() + 1}/${start.getDate()}〜${now.getMonth() + 1}/${now.getDate()}は新しい自己紹介は見当たらなかったみたい。` +
+      '\nまだ名乗っていない人は、短い一言からでも歓迎だよ。みんなでつながろう！'
     );
   }
   const lines = [
-    `デジリューの自己紹介パトロールだぞ！${start.getMonth() + 1}/${start.getDate()}〜${now.getMonth() + 1}/${now.getDate()}のニューフェイスをまとめたぜ🔥`,
+    `やっほー、デジリューだよ。${start.getMonth() + 1}/${start.getDate()}〜${now.getMonth() + 1}/${now.getDate()}の自己紹介をまとめてお届け！`,
   ];
   for (const [userId, msgs] of byUser.entries()) {
     const latest = msgs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
     const excerpt = (latest.content || '').replace(/\n/g, ' ').slice(0, 160) + (latest.content && latest.content.length > 160 ? '…' : '');
-    lines.push(`- <@${userId}> さん：${excerpt || '自己紹介をしてくれたぞ！'}`);
+    lines.push(`- <@${userId}> さん：${excerpt || '自己紹介をしてくれたよ！'}`);
   }
   lines.push('');
-  lines.push('仲良くなるチャンスを逃すなよ！気になった子にはスレッドで声をかけてみてくれ！');
+  lines.push('気になった人には、まずは一言リアクションやスレッドでご挨拶してみようね 😊');
   return lines.join('\n');
 }
 
