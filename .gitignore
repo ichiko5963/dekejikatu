@@ -1,0 +1,17 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Local env
+.env
+.env.*
+
+# State files
+DEJIRYU_DISCORD/data/state.json
+DEJIRYU_DISCORD/data/*.json
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
