@@ -1,0 +1,46 @@
+name: Discord Consultation Ping (every 5 days JST 12:00)
+
+on:
+  schedule:
+    - cron: '0 3 */5 * *' # UTC 03:00 => JST 12:00
+  workflow_dispatch:
+
+concurrency:
+  group: discord-consultation
+  cancel-in-progress: true
+
+jobs:
+  consultation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TZ: Asia/Tokyo
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+
+      - name: Install
+        working-directory: DEJIRYU_DISCORD
+        run: npm ci
+
+      - name: Post consultation prompt
+        working-directory: DEJIRYU_DISCORD
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_CHANNEL_ID: ${{ secrets.CONSULTATION }}
+          CONSULTATION_ROLE_ID: ${{ secrets.CONSULTATION_ROLE_ID }}
+        run: node DEJIRYU_DISCORD/scripts/discord-consultation.js || echo "consultation failed" > logs/consultation.exit
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: consultation-logs
+          path: DEJIRYU_DISCORD/logs/**
+          retention-days: 7

@@ -1,0 +1,45 @@
+name: Discord Achievements Digest (weekly JST 20:00)
+
+on:
+  schedule:
+    - cron: '0 11 * * 0' # UTC 11:00 on Sunday => JST 20:00
+  workflow_dispatch:
+
+concurrency:
+  group: discord-achievements
+  cancel-in-progress: true
+
+jobs:
+  achievements:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TZ: Asia/Tokyo
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+
+      - name: Install
+        working-directory: DEJIRYU_DISCORD
+        run: npm ci
+
+      - name: Post achievements digest
+        working-directory: DEJIRYU_DISCORD
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_CHANNEL_ID: ${{ secrets.ACHIEVEMENTS }}
+        run: node DEJIRYU_DISCORD/scripts/discord-achievements.js || echo "achievements failed" > logs/achievements.exit
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: achievements-logs
+          path: DEJIRYU_DISCORD/logs/**
+          retention-days: 7

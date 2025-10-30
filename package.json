@@ -5,6 +5,8 @@
   "type": "commonjs",
   "scripts": {
     "selfintro": "node DEJIRYU_DISCORD/scripts/discord-selfintro.js",
-    "ainews": "node DEJIRYU_DISCORD/scripts/discord-ai-news.js"
+    "ainews": "node DEJIRYU_DISCORD/scripts/discord-ai-news.js",
+    "consultation": "node DEJIRYU_DISCORD/scripts/discord-consultation.js",
+    "achievements": "node DEJIRYU_DISCORD/scripts/discord-achievements.js"
   }
 }
