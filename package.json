@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "type": "commonjs",
   "scripts": {
-    "selfintro": "node DEJIRYU_DISCORD/scripts/discord-selfintro.js"
+    "selfintro": "node DEJIRYU_DISCORD/scripts/discord-selfintro.js",
+    "ainews": "node DEJIRYU_DISCORD/scripts/discord-ai-news.js"
   }
 }

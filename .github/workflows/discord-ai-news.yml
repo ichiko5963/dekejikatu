@@ -1,0 +1,61 @@
+name: Discord AI News (daily JST 07:00)
+
+on:
+  schedule:
+    - cron: '0 22 * * *' # UTC 22:00 => JST 07:00
+  workflow_dispatch:
+
+concurrency:
+  group: discord-ai-news
+  cancel-in-progress: true
+
+jobs:
+  ai-news:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TZ: Asia/Tokyo
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+
+      - name: Install
+        working-directory: DEJIRYU_DISCORD
+        run: |
+          npm ci
+
+      - name: Post AI news
+        working-directory: DEJIRYU_DISCORD
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_CHANNEL_ID: ${{ secrets.AI_NEWS }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          NEWS_API_KEY: ${{ secrets.NEWS_API_KEY_ENV }}
+        run: |
+          node DEJIRYU_DISCORD/scripts/discord-ai-news.js || echo "ai-news failed with code $?" > logs/ainews.exit
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-news-logs
+          path: |
+            DEJIRYU_DISCORD/logs/**
+            DEJIRYU_DISCORD/logs/*.log
+          retention-days: 7
+
+      - name: Job summary
+        if: always()
+        run: |
+          echo "Secrets present:" >> $GITHUB_STEP_SUMMARY
+          echo "- DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN != '' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- AI_NEWS: ${{ secrets.AI_NEWS != '' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY != '' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- NEWS_API_KEY: ${{ secrets.NEWS_API_KEY_ENV != '' }}" >> $GITHUB_STEP_SUMMARY
+          echo "Schedule (cron UTC): 0 22 * * * (JST 07:00)" >> $GITHUB_STEP_SUMMARY
