@@ -26,15 +26,13 @@ jobs:
           cache: 'npm'
 
       - name: Install
-        working-directory: DEJIRYU_DISCORD
-        run: npm ci
+        run: npm ci --prefix DEJIRYU_DISCORD
 
       - name: Post achievements digest
-        working-directory: DEJIRYU_DISCORD
         env:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_CHANNEL_ID: ${{ secrets.ACHIEVEMENTS }}
-        run: node DEJIRYU_DISCORD/scripts/discord-achievements.js || echo "achievements failed" > logs/achievements.exit
+        run: node DEJIRYU_DISCORD/scripts/discord-achievements.js || echo "achievements failed" > DEJIRYU_DISCORD/logs/achievements.exit
 
       - name: Upload logs on failure
         if: failure()

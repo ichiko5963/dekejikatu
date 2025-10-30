@@ -26,16 +26,14 @@ jobs:
           cache: 'npm'
 
       - name: Install
-        working-directory: DEJIRYU_DISCORD
-        run: npm ci
+        run: npm ci --prefix DEJIRYU_DISCORD
 
       - name: Post consultation prompt
-        working-directory: DEJIRYU_DISCORD
         env:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_CHANNEL_ID: ${{ secrets.CONSULTATION }}
           CONSULTATION_ROLE_ID: ${{ secrets.CONSULTATION_ROLE_ID }}
-        run: node DEJIRYU_DISCORD/scripts/discord-consultation.js || echo "consultation failed" > logs/consultation.exit
+        run: node DEJIRYU_DISCORD/scripts/discord-consultation.js || echo "consultation failed" > DEJIRYU_DISCORD/logs/consultation.exit
 
       - name: Upload logs on failure
         if: failure()

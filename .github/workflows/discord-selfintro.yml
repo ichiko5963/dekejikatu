@@ -30,19 +30,17 @@ jobs:
           cache: 'npm'
 
       - name: Install
-        working-directory: DEJIRYU_DISCORD
         run: |
-          npm ci
+          npm ci --prefix DEJIRYU_DISCORD
 
       - name: Run digest poster
-        working-directory: DEJIRYU_DISCORD
         env:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_GUILD_ID: ${{ secrets.GUILD_ID }}
           DISCORD_CHANNEL_ID: ${{ secrets.SELF_INTRO }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          npm run selfintro || echo "selfintro failed with code $?" > logs/selfintro.exit
+          node DEJIRYU_DISCORD/scripts/discord-selfintro.js || echo "selfintro failed with code $?" > DEJIRYU_DISCORD/logs/selfintro.exit
 
       - name: Upload logs on failure
         if: failure()
