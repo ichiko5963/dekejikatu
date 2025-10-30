@@ -1,0 +1,65 @@
+name: Discord Self-Intro Digest (every 4 days at JST 15:00)
+
+on:
+  schedule:
+    - cron: '0 6 */4 * *' # UTC 06:00 => JST 15:00
+  workflow_dispatch:
+  push:
+    paths:
+      - 'DEJIRYU_DISCORD/scripts/discord-selfintro.js'
+      - 'DEJIRYU_DISCORD/.github/workflows/discord-selfintro.yml'
+
+concurrency:
+  group: discord-selfintro
+  cancel-in-progress: true
+
+jobs:
+  post-digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TZ: Asia/Tokyo
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+
+      - name: Install
+        working-directory: DEJIRYU_DISCORD
+        run: |
+          npm ci
+
+      - name: Run digest poster
+        working-directory: DEJIRYU_DISCORD
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_GUILD_ID: ${{ secrets.GUILD_ID }}
+          DISCORD_CHANNEL_ID: ${{ secrets.SELF_INTRO }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          npm run selfintro || echo "selfintro failed with code $?" > logs/selfintro.exit
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selfintro-logs
+          path: |
+            DEJIRYU_DISCORD/logs/**
+            DEJIRYU_DISCORD/logs/*.log
+          retention-days: 7
+
+      - name: Job summary
+        if: always()
+        run: |
+          echo "Secrets present:" >> $GITHUB_STEP_SUMMARY
+          echo "- DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN != '' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- GUILD_ID: ${{ secrets.GUILD_ID != '' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- SELF_INTRO: ${{ secrets.SELF_INTRO != '' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY != '' }}" >> $GITHUB_STEP_SUMMARY
+          echo "Next schedule (cron UTC): 0 6 */4 * * (JST 15:00)" >> $GITHUB_STEP_SUMMARY
