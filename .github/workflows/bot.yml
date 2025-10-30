@@ -1,0 +1,97 @@
+name: Run DejiRyu Discord Bot (JST 10:00-20:00 hourly)
+
+on:
+  schedule:
+    # Run at minute 0 between 01:00-11:00 UTC (JST 10:00-20:00)
+    - cron: '0 1-11 * * *'
+  workflow_dispatch:
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r DEJIRYU_DISCORD/requirements.txt
+
+      - name: Compose runtime config.json from secrets
+        env:
+          GUILD_ID: ${{ secrets.GUILD_ID }}
+          SELF_INTRO: ${{ secrets.SELF_INTRO }}
+          AI_NEWS: ${{ secrets.AI_NEWS }}
+          EVENTS: ${{ secrets.EVENTS }}
+          ACHIEVEMENTS: ${{ secrets.ACHIEVEMENTS }}
+          CONSULTATION: ${{ secrets.CONSULTATION }}
+          INTERACTION: ${{ secrets.INTERACTION }}
+          EXCLUSIVE: ${{ secrets.EXCLUSIVE }}
+          TIMEZONE: ${{ secrets.TIMEZONE }}
+          NEWS_API_KEY_ENV: NEWS_API_KEY
+          DISCORD_TOKEN_ENV: DISCORD_BOT_TOKEN
+        run: |
+          mkdir -p DEJIRYU_DISCORD
+          jq -n \
+            --arg guild_id "${GUILD_ID}" \
+            --arg tz "${TIMEZONE:-Asia/Tokyo}" \
+            --arg self_intro "${SELF_INTRO}" \
+            --arg ai_news_ch "${AI_NEWS}" \
+            --arg events "${EVENTS}" \
+            --arg achievements "${ACHIEVEMENTS}" \
+            --arg consultation "${CONSULTATION}" \
+            --arg interaction "${INTERACTION}" \
+            --arg exclusive "${EXCLUSIVE}" \
+            --arg token_env "${DISCORD_TOKEN_ENV}" \
+            --arg news_env "${NEWS_API_KEY_ENV}" \
+            '{
+              discord_token_env: $token_env,
+              guild_id: $guild_id,
+              timezone: $tz,
+              channels: {
+                self_intro: $self_intro,
+                ai_news: $ai_news_ch,
+                events: $events,
+                achievements: $achievements,
+                consultation: $consultation
+              },
+              ai_news: {
+                news_api_key_env: $news_env,
+                news_api_query: "artificial intelligence",
+                news_api_language: "ja",
+                articles_per_day: 3
+              },
+              exclusive_content: {
+                content_rotation_days: 7,
+                items: []
+              },
+              consultation_prompt: {
+                ping_role_id: "",
+                message_variations: [
+                  "質問はないか？デジリューの診察時間だぞ。遠慮なく呼んでくれよな！",
+                  "お困りごとはないか？デジカツの知恵袋ことデジリューが今なら即レスするぞ。"
+                ]
+              },
+              active_hours: { start: 10, end: 20 }
+            }' > DEJIRYU_DISCORD/config.json
+          echo "Config written to DEJIRYU_DISCORD/config.json"
+
+      - name: Run bot for ~55 minutes (JST 10-20 only)
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_TOKEN_ENV }}
+          NEWS_API_KEY: ${{ secrets.NEWS_API_KEY_ENV }}
+          DEJIRYU_CONFIG_PATH: DEJIRYU_DISCORD/config.json
+          DEJIRYU_STATE_PATH: DEJIRYU_DISCORD/data/state.json
+          DEJIRYU_MAX_RUN_SECONDS: '3300'
+        run: |
+          mkdir -p DEJIRYU_DISCORD/data
+          python DEJIRYU_DISCORD/dejiryu_bot.py
