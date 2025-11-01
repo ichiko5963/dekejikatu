@@ -11,7 +11,7 @@ process.env.TZ = process.env.TZ || 'Asia/Tokyo';
 const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const CHANNEL_ID = process.env.DISCORD_CHANNEL_ID || process.env.AI_NEWS_CHANNEL_ID; // fallback alias
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const NEWS_API_KEY = process.env.NEWS_API_KEY;
+const NEWS_API_KEY = process.env.NEWS_API_KEY || process.env.NEWS_API_KEY_ENV; // support both names
 
 const LOG_DIR = 'DEJIRYU_DISCORD/logs';
 const LOG_FILE = `${LOG_DIR}/ai-news.log`;
@@ -19,6 +19,7 @@ const LOG_FILE = `${LOG_DIR}/ai-news.log`;
 function log(line) {
   fs.mkdirSync(LOG_DIR, { recursive: true });
   fs.appendFileSync(LOG_FILE, `[${new Date().toISOString()}] ${line}\n`);
+  console.log(line);
 }
 
 function assertEnv(name, value) {
@@ -26,27 +27,63 @@ function assertEnv(name, value) {
 }
 
 async function fetchNewsFromNewsAPI() {
-  if (!NEWS_API_KEY) return [];
-  const params = new URLSearchParams({
-    q: 'artificial intelligence OR generative AI',
-    language: 'ja',
-    pageSize: '8',
-    sortBy: 'publishedAt',
-  });
-  const resp = await fetch(`https://newsapi.org/v2/everything?${params.toString()}`, {
-    headers: { 'X-Api-Key': NEWS_API_KEY },
-  });
-  if (!resp.ok) {
-    log(`NewsAPI failed: ${resp.status}`);
+  if (!NEWS_API_KEY) {
+    log('NewsAPI key not set, skipping NewsAPI fetch');
     return [];
   }
-  const data = await resp.json();
-  const items = (data.articles || []).map(a => ({
-    title: a.title,
-    url: a.url,
-    summary: a.description || '',
-  }));
-  return items.slice(0, 5);
+  
+  // Try Japanese first, then English as fallback
+  const queries = [
+    { q: 'artificial intelligence OR 生成AI', language: 'ja' },
+    { q: 'artificial intelligence OR generative AI', language: 'en' }
+  ];
+  
+  for (const query of queries) {
+    try {
+      const params = new URLSearchParams({
+        q: query.q,
+        language: query.language,
+        pageSize: '8',
+        sortBy: 'publishedAt',
+      });
+      log(`Trying NewsAPI with query: ${query.q} (${query.language})`);
+      
+      const resp = await fetch(`https://newsapi.org/v2/everything?${params.toString()}`, {
+        headers: { 'X-Api-Key': NEWS_API_KEY },
+      });
+      
+      if (!resp.ok) {
+        const text = await resp.text();
+        log(`NewsAPI HTTP ${resp.status}: ${text.slice(0, 200)}`);
+        continue; // try next query
+      }
+      
+      const data = await resp.json();
+      log(`NewsAPI response status: ${data.status}, totalResults: ${data.totalResults || 0}`);
+      
+      if (data.status === 'error') {
+        log(`NewsAPI error: ${data.message || 'unknown'}`);
+        continue;
+      }
+      
+      const items = (data.articles || []).map(a => ({
+        title: a.title,
+        url: a.url,
+        summary: a.description || a.content?.slice(0, 200) || '',
+      })).filter(a => a.title && a.url); // filter out invalid
+      
+      if (items.length > 0) {
+        log(`NewsAPI success: found ${items.length} articles`);
+        return items.slice(0, 5);
+      }
+    } catch (err) {
+      log(`NewsAPI exception: ${err.message}`);
+      continue;
+    }
+  }
+  
+  log('NewsAPI: all queries failed or returned no results');
+  return [];
 }
 
 function fallbackFormat(items) {
@@ -78,17 +115,23 @@ async function summarizeWithOpenAI(rawItems) {
     temperature: 0.4,
     max_tokens: 600,
   };
-  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OPENAI_API_KEY}` },
-    body: JSON.stringify(payload),
-  });
-  if (!resp.ok) {
-    log(`OpenAI failed: ${resp.status}`);
+  try {
+    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OPENAI_API_KEY}` },
+      body: JSON.stringify(payload),
+    });
+    if (!resp.ok) {
+      const text = await resp.text();
+      log(`OpenAI HTTP ${resp.status}: ${text.slice(0, 200)}`);
+      return null;
+    }
+    const data = await resp.json();
+    return data.choices?.[0]?.message?.content?.trim() || null;
+  } catch (err) {
+    log(`OpenAI exception: ${err.message}`);
     return null;
   }
-  const data = await resp.json();
-  return data.choices?.[0]?.message?.content?.trim() || null;
 }
 
 async function postToDiscord(channelId, content) {
@@ -97,7 +140,10 @@ async function postToDiscord(channelId, content) {
     headers: { 'Content-Type': 'application/json', Authorization: `Bot ${BOT_TOKEN}` },
     body: JSON.stringify({ content }),
   });
-  if (!resp.ok) throw new Error(`Discord post failed: ${resp.status}`);
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Discord post failed: ${resp.status} - ${text.slice(0, 200)}`);
+  }
 }
 
 (async () => {
@@ -105,14 +151,16 @@ async function postToDiscord(channelId, content) {
     assertEnv('DISCORD_BOT_TOKEN', BOT_TOKEN);
     assertEnv('DISCORD_CHANNEL_ID', CHANNEL_ID);
 
+    log(`Starting AI news fetch. NEWS_API_KEY present: ${!!NEWS_API_KEY}, OPENAI_API_KEY present: ${!!OPENAI_API_KEY}`);
+
     const raw = await fetchNewsFromNewsAPI();
-    log(`fetched items: ${raw.length}`);
+    log(`Fetched ${raw.length} items from NewsAPI`);
 
     const ai = await summarizeWithOpenAI(raw);
     const msg = ai || fallbackFormat(raw);
 
     await postToDiscord(CHANNEL_ID, msg);
-    log('posted ai-news successfully');
+    log('Posted ai-news successfully');
   } catch (e) {
     log(`ERROR: ${e.stack || e.message}`);
     console.error(e);
