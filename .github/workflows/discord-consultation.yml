@@ -1,4 +1,5 @@
 name: Discord Consultation Ping (every 5 days JST 12:00)
+# Updated: 2025-11-01
 
 on:
   schedule:

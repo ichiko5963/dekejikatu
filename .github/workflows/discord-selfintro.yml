@@ -1,4 +1,5 @@
 name: Discord Self-Intro Digest (every 4 days at JST 15:00)
+# Updated: 2025-11-01
 
 on:
   schedule:
