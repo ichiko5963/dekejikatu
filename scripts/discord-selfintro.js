@@ -87,12 +87,35 @@ async function summarizeWithOpenAI(nonBot) {
   if (!OPENAI_API_KEY) return null;
   const now = new Date();
   const start = new Date(now.getTime() - 10 * 24 * 3600 * 1000);
+  
+  // すべてのメッセージを取得（上限は100件程度）
   const examples = nonBot
-    .slice(0, 50)
-    .map(m => `- user:${m.author.username} (${m.author.id}) => ${m.content?.slice(0, 200) || ''}`)
-    .join('\n');
+    .slice(0, 100)
+    .map(m => {
+      const content = (m.content || '').trim();
+      return content ? `- ${m.author.username}: ${content}` : null;
+    })
+    .filter(Boolean)
+    .join('\n\n');
+  
+  log(`Sending ${nonBot.length} messages to OpenAI (showing first ${Math.min(100, nonBot.length)} in prompt)`);
+  if (examples) {
+    log(`Sample messages (first 500 chars): ${examples.slice(0, 500)}`);
+  }
 
-  const prompt = `以下はDiscordの#自己紹介チャンネルの直近10日分の抜粋です。日本語で、温度感のある歓迎メッセージ+簡単な抜粋を200〜300字でまとめてください。固有名詞は伏せ気味に、絵文字は最大1つ。期間: ${start.toISOString()} 〜 ${now.toISOString()}\n\n${examples}`;
+  const prompt = `以下はDiscordの#自己紹介チャンネルの直近10日分の実際のメッセージ内容です。これらのメッセージから、実際に自己紹介してくれた人の具体的な内容（趣味、特技、興味のあることなど）を反映したサマリーを作成してください。
+
+重要な要件:
+- 実際のメッセージ内容を具体的に反映する（「様々な趣味」などの抽象表現は避ける）
+- デジリューの口調（軽やかで前向き、簡潔で読みやすい）
+- 200〜350文字程度
+- 絵文字は最大1つまで
+- 固有名詞（ゲーム名、作品名など）は自然に含めてOK
+
+メッセージ一覧:
+${examples}
+
+上記のメッセージ内容を基に、具体的で温かみのあるサマリーを作成してください。`;
 
   const resp = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -103,11 +126,11 @@ async function summarizeWithOpenAI(nonBot) {
     body: JSON.stringify({
       model: 'gpt-4o-mini',
       messages: [
-        { role: 'system', content: 'You are a Japanese copywriter who writes warm, concise summaries for a Discord community.' },
+        { role: 'system', content: 'あなたは「デジリュー」というDiscord向けナビゲーターボットです。口調は軽やかで前向き、簡潔で読みやすく。実際のメッセージ内容を具体的に反映し、抽象的な表現は避けます。' },
         { role: 'user', content: prompt },
       ],
-      temperature: 0.5,
-      max_tokens: 450,
+      temperature: 0.6,
+      max_tokens: 500,
     }),
   });
   if (!resp.ok) {
@@ -143,10 +166,27 @@ async function postMessage(channelId, content) {
     const raw = await fetchMessagesSince(CHANNEL_ID, since.toISOString(), 800);
     const nonBot = raw.filter(m => !m.author?.bot);
     log(`Fetched ${raw.length} messages, ${nonBot.length} non-bot.`);
+    
+    // デバッグ: 取得したメッセージのサンプルをログに出力
+    if (nonBot.length > 0) {
+      const sampleMessages = nonBot.slice(0, 3).map(m => ({
+        author: m.author?.username || 'unknown',
+        content: (m.content || '').slice(0, 100),
+        timestamp: m.timestamp
+      }));
+      log(`Sample messages: ${JSON.stringify(sampleMessages, null, 2)}`);
+    } else {
+      log('No non-bot messages found in the period');
+    }
 
     const ai = await summarizeWithOpenAI(nonBot);
+    log(`OpenAI summary result: ${ai ? 'success' : 'failed or skipped'}`);
+    if (ai) {
+      log(`OpenAI summary preview: ${ai.slice(0, 200)}...`);
+    }
     const fallback = buildFallbackSummary(nonBot);
     const content = ai || fallback;
+    log(`Final content to post: ${content.slice(0, 150)}...`);
 
     await postMessage(CHANNEL_ID, content);
     log('Posted digest successfully.');
