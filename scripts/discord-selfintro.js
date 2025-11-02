@@ -18,7 +18,9 @@ const LOG_FILE = `${LOG_DIR}/selfintro.log`;
 
 function log(line) {
   fs.mkdirSync(LOG_DIR, { recursive: true });
-  fs.appendFileSync(LOG_FILE, `[${new Date().toISOString()}] ${line}\n`);
+  const logLine = `[${new Date().toISOString()}] ${line}`;
+  fs.appendFileSync(LOG_FILE, `${logLine}\n`);
+  console.log(logLine); // Also output to stdout for GitHub Actions logs
 }
 
 function assertEnv(name, value) {
