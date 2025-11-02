@@ -1,6 +1,6 @@
 /*
   Self-intro digest poster
-  - Collect last 4 days of non-bot messages from a channel
+  - Collect last 10 days of non-bot messages from a channel
   - Optionally summarize with OpenAI
   - Post a warm digest message back to the channel
 */
@@ -63,10 +63,10 @@ function buildFallbackSummary(nonBot) {
     byUser.get(key).push(m);
   }
   const now = new Date();
-  const start = new Date(now.getTime() - 4 * 24 * 3600 * 1000);
+  const start = new Date(now.getTime() - 10 * 24 * 3600 * 1000);
   if (byUser.size === 0) {
     return (
-      `やっほー、デジリューだよ。${start.getMonth() + 1}/${start.getDate()}〜${now.getMonth() + 1}/${now.getDate()}は新しい自己紹介は見当たらなかったみたい。` +
+      `やっほー、デジリューだよ。${start.getMonth() + 1}/${start.getDate()}〜${now.getMonth() + 1}/${now.getDate()}は新しい自己紹介が見当たらなくて、ちょっと寂しいな。` +
       '\nまだ名乗っていない人は、短い一言からでも歓迎だよ。みんなでつながろう！'
     );
   }
@@ -86,13 +86,13 @@ function buildFallbackSummary(nonBot) {
 async function summarizeWithOpenAI(nonBot) {
   if (!OPENAI_API_KEY) return null;
   const now = new Date();
-  const start = new Date(now.getTime() - 4 * 24 * 3600 * 1000);
+  const start = new Date(now.getTime() - 10 * 24 * 3600 * 1000);
   const examples = nonBot
     .slice(0, 50)
     .map(m => `- user:${m.author.username} (${m.author.id}) => ${m.content?.slice(0, 200) || ''}`)
     .join('\n');
 
-  const prompt = `以下はDiscordの#自己紹介チャンネルの直近4日分の抜粋です。日本語で、温度感のある歓迎メッセージ+簡単な抜粋を200〜300字でまとめてください。固有名詞は伏せ気味に、絵文字は最大1つ。期間: ${start.toISOString()} 〜 ${now.toISOString()}\n\n${examples}`;
+  const prompt = `以下はDiscordの#自己紹介チャンネルの直近10日分の抜粋です。日本語で、温度感のある歓迎メッセージ+簡単な抜粋を200〜300字でまとめてください。固有名詞は伏せ気味に、絵文字は最大1つ。期間: ${start.toISOString()} 〜 ${now.toISOString()}\n\n${examples}`;
 
   const resp = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -137,7 +137,7 @@ async function postMessage(channelId, content) {
     assertEnv('DISCORD_CHANNEL_ID', CHANNEL_ID);
 
     const now = new Date();
-    const since = new Date(now.getTime() - 4 * 24 * 3600 * 1000);
+    const since = new Date(now.getTime() - 10 * 24 * 3600 * 1000);
     log(`Collecting messages since ${since.toISOString()} from ${CHANNEL_ID}`);
 
     const raw = await fetchMessagesSince(CHANNEL_ID, since.toISOString(), 800);

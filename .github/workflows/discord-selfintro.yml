@@ -1,9 +1,9 @@
-name: Discord Self-Intro Digest (every 4 days at JST 15:00)
+name: Discord Self-Intro Digest (every 10 days at JST 15:00)
 # Updated: 2025-11-01
 
 on:
   schedule:
-    - cron: '0 6 */4 * *' # UTC 06:00 => JST 15:00
+    - cron: '0 6 */10 * *' # UTC 06:00 => JST 15:00, every 10 days
   workflow_dispatch:
   push:
     paths:
@@ -63,4 +63,4 @@ jobs:
           echo "- GUILD_ID: ${{ secrets.GUILD_ID != '' }}" >> $GITHUB_STEP_SUMMARY
           echo "- SELF_INTRO: ${{ secrets.SELF_INTRO != '' }}" >> $GITHUB_STEP_SUMMARY
           echo "- OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY != '' }}" >> $GITHUB_STEP_SUMMARY
-          echo "Next schedule (cron UTC): 0 6 */4 * * (JST 15:00)" >> $GITHUB_STEP_SUMMARY
+          echo "Next schedule (cron UTC): 0 6 */10 * * (JST 15:00, every 10 days)" >> $GITHUB_STEP_SUMMARY
