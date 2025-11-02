@@ -51,6 +51,26 @@ function getRotatingMessage(patternIndex) {
   return patterns[patternIndex % patterns.length];
 }
 
+function getSummaryHeader(patternIndex, start, now) {
+  const patterns = [
+    `やっほー、デジリューだよ！${start.getMonth()+1}/${start.getDate()}〜${now.getMonth()+1}/${now.getDate()}の「できた！」報告をまとめたよ💪`,
+    `おはよう、デジリューだよ。今週も${start.getMonth()+1}/${start.getDate()}〜${now.getMonth()+1}/${now.getDate()}で素敵な「できた！」が集まってるね✨`,
+    `やっほー、デジリューだよ。${start.getMonth()+1}/${start.getDate()}〜${now.getMonth()+1}/${now.getDate()}の週も、みんなの「できた！」がたくさん見えて嬉しいな😊`,
+    `おはよう、デジリューだよ。${start.getMonth()+1}/${start.getDate()}〜${now.getMonth()+1}/${now.getDate()}の「できた！」報告、まとめてみたよ！みんなの頑張りが伝わってくるな🔥`
+  ];
+  return patterns[patternIndex % patterns.length];
+}
+
+function getSummaryFooter(patternIndex) {
+  const patterns = [
+    '次もド派手な「できた！」を待ってるぞ🔥',
+    '今週もみんなの成長、しっかり見届けたよ。次回も楽しみにしてるね✨',
+    'これからもいろんな「できた！」をシェアしてくれると嬉しいな💪',
+    '小さな「できた」も大きな「できた」も、全部大切だよ。次回も待ってるね😊'
+  ];
+  return patterns[patternIndex % patterns.length];
+}
+
 function formatSummary(nonBot){
   const now = new Date();
   const start = new Date(now.getTime() - 7*24*3600*1000);
@@ -61,15 +81,22 @@ function formatSummary(nonBot){
     log(`No messages found, using rotating message pattern ${patternIndex + 1}`);
     return getRotatingMessage(patternIndex);
   }
+  
+  // メッセージがある場合もパターン化（週番号で選ぶ）
+  const weekOfYear = Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 1).getTime()) / (7 * 24 * 3600 * 1000));
+  const patternIndex = weekOfYear % 4;
+  log(`Messages found, using summary pattern ${patternIndex + 1}`);
+  
   const lines = [
-    `${start.getMonth()+1}/${start.getDate()}〜${now.getMonth()+1}/${now.getDate()}の「できた！」報告まとめだぞ💪`,
+    getSummaryHeader(patternIndex, start, now),
     'みんなの成長、デジリューがしっかり見届けた！'
   ];
   for(const m of nonBot.slice(0,40)){
     const excerpt = (m.content||'').replace(/\n/g,' ').slice(0,120);
     lines.push(`- <@${m.author.id}>：${excerpt}${excerpt.length===120?'…':''}`);
   }
-  lines.push('次もド派手な「できた！」を待ってるぞ🔥');
+  lines.push('');
+  lines.push(getSummaryFooter(patternIndex));
   return lines.join('\n');
 }
 
