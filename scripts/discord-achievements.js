@@ -9,7 +9,12 @@ const CHANNEL_ID = process.env.DISCORD_CHANNEL_ID || process.env.ACHIEVEMENTS;
 const LOG_DIR = 'DEJIRYU_DISCORD/logs';
 const LOG_FILE = `${LOG_DIR}/achievements.log`;
 
-function log(line){ fs.mkdirSync(LOG_DIR,{recursive:true}); fs.appendFileSync(LOG_FILE, `[${new Date().toISOString()}] ${line}\n`); }
+function log(line){ 
+  fs.mkdirSync(LOG_DIR,{recursive:true}); 
+  const logLine = `[${new Date().toISOString()}] ${line}`;
+  fs.appendFileSync(LOG_FILE, `${logLine}\n`);
+  console.log(logLine); // Also output to stdout for GitHub Actions logs
+}
 function assertEnv(n,v){ if(!v) throw new Error(`Missing env: ${n}`); }
 
 async function fetchSince(channelId, sinceIso, limitMax=1000){
@@ -33,11 +38,28 @@ async function fetchSince(channelId, sinceIso, limitMax=1000){
   return out;
 }
 
+function getRotatingMessage(patternIndex) {
+  const patterns = [
+    `やっほー、デジリューだよ。今週は「できた！」報告がまだないみたい。ちょっと寂しいな…😢\n\nでも大丈夫！小さな「できた」でも全然OKだよ。新しいコードが動いた、ちょっと調子がいい日があった、なんでもいいからシェアしてくれると嬉しいな。みんなの成長、一緒に喜びたいから！✨`,
+    
+    `おはよう、デジリューだよ。今週の「できた！」報告、まだ見当たらないな。\n\n実は「できた」って、大きくなくても全然いいんだ。例えば「エラー直した」「新しいツール試した」「本1ページ読んだ」とか。どんな小さなことでも、積み重ねが大事だからね。気軽に投稿してみてほしいな 😊`,
+    
+    `やっほー、デジリューだよ。今週の「できた！」報告、待ってるんだけど見当たらないな。\n\n「できた」は恥ずかしがらなくていいよ。誰かと比べる必要もない。自分なりのペースで、自分なりの「できた」を報告してくれるだけでいいんだ。みんな応援してるから、気軽にシェアしてみて！💪`,
+    
+    `おはよう、デジリューだよ。今週は「できた！」報告が見当たらなくて、ちょっとさみしいな。\n\nでもね、「できた」って思える瞬間って、実は毎日あるかもしれない。朝起きれた、ご飯食べた、それも「できた」の一つかもしれない。技術的なことでも、日常のことでも、なんでもいいから「できた」と思えたことをシェアしてみてほしいな。きっと誰かが「いいね！」って言ってくれるよ 🌟`
+  ];
+  return patterns[patternIndex % patterns.length];
+}
+
 function formatSummary(nonBot){
   const now = new Date();
   const start = new Date(now.getTime() - 7*24*3600*1000);
   if(nonBot.length===0){
-    return 'デジリュー通信！先週は「できた！」報告が見当たらなかったぞ…。みんなの挑戦を聞かせてくれ！';
+    // 4パターンから周期的に選ぶ（週番号で選ぶ）
+    const weekOfYear = Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 1).getTime()) / (7 * 24 * 3600 * 1000));
+    const patternIndex = weekOfYear % 4;
+    log(`No messages found, using rotating message pattern ${patternIndex + 1}`);
+    return getRotatingMessage(patternIndex);
   }
   const lines = [
     `${start.getMonth()+1}/${start.getDate()}〜${now.getMonth()+1}/${now.getDate()}の「できた！」報告まとめだぞ💪`,
@@ -66,7 +88,21 @@ async function post(content){
     const since = new Date(now.getTime()-7*24*3600*1000);
     const raw = await fetchSince(CHANNEL_ID, since.toISOString(), 1200);
     const nonBot = raw.filter(m=>!m.author?.bot);
+    log(`Fetched ${raw.length} messages, ${nonBot.length} non-bot.`);
+    
+    if (nonBot.length === 0) {
+      log('No messages found, using rotating message');
+    } else {
+      const sampleMessages = nonBot.slice(0, 3).map(m => ({
+        author: m.author?.username || 'unknown',
+        content: (m.content || '').slice(0, 100),
+        timestamp: m.timestamp
+      }));
+      log(`Sample messages: ${JSON.stringify(sampleMessages, null, 2)}`);
+    }
+    
     const msg = formatSummary(nonBot);
+    log(`Final content to post: ${msg.slice(0, 150)}...`);
     await post(msg);
     log('posted achievements digest');
   }catch(e){
