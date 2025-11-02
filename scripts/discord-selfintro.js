@@ -57,6 +57,17 @@ async function fetchMessagesSince(channelId, sinceIso, limitMax = 500) {
   return messages;
 }
 
+function getRotatingMessage(patternIndex) {
+  const patterns = [
+    `最近はいろんなAI好きが自己紹介してくれてるみたい。機械学習や生成AIに興味がある人、実際にAIツールを使ってみてる人、それぞれの楽しみ方があるのが面白いな。\n\n新しく参加した人も、どんなAIツール使ってるか、どんなことに興味があるか、気軽に自己紹介してくれると嬉しいよ 😊`,
+    
+    `いろんなAI好きが自己紹介してくれてて、ほんとに嬉しい。チャットボット作りにハマってる人もいれば、画像生成AIで創作してる人もいるし、それぞれの関わり方があって参考になるな。\n\nまだ自己紹介してない人も、短い一言からでもOK。どんなAI体験してるか、ぜひシェアしてほしいな。`,
+    
+    `AIに興味がある人たちの自己紹介、どんどん増えてて楽しい。研究してる人もいれば、趣味で触ってる人もいて、バランスがいい感じ。自然言語処理に興味ある人もいるし、データサイエンスやってる人もいて、刺激になるな。\n\nこれからもいろんな自己紹介、待ってるよ ✨`
+  ];
+  return patterns[patternIndex % patterns.length];
+}
+
 function buildFallbackSummary(nonBot) {
   const byUser = new Map();
   for (const m of nonBot) {
@@ -67,10 +78,11 @@ function buildFallbackSummary(nonBot) {
   const now = new Date();
   const start = new Date(now.getTime() - 10 * 24 * 3600 * 1000);
   if (byUser.size === 0) {
-    return (
-      `やっほー、デジリューだよ。${start.getMonth() + 1}/${start.getDate()}〜${now.getMonth() + 1}/${now.getDate()}は新しい自己紹介が見当たらなくて、ちょっと寂しいな。` +
-      '\nまだ名乗っていない人は、短い一言からでも歓迎だよ。みんなでつながろう！'
-    );
+    // メッセージがない場合は、3パターンから周期的に選ぶ（日付の日にちで選ぶ）
+    const dayOfMonth = now.getDate();
+    const patternIndex = dayOfMonth % 3;
+    log(`No messages found, using rotating message pattern ${patternIndex + 1}`);
+    return getRotatingMessage(patternIndex);
   }
   const lines = [
     `やっほー、デジリューだよ。${start.getMonth() + 1}/${start.getDate()}〜${now.getMonth() + 1}/${now.getDate()}の自己紹介をまとめてお届け！`,
@@ -181,6 +193,20 @@ async function postMessage(channelId, content) {
       log('No non-bot messages found in the period');
     }
 
+    // メッセージがない場合は3パターンから選ぶ
+    if (nonBot.length === 0) {
+      const now = new Date();
+      const dayOfMonth = now.getDate();
+      const patternIndex = dayOfMonth % 3;
+      log(`No messages found, using rotating message pattern ${patternIndex + 1}`);
+      const content = getRotatingMessage(patternIndex);
+      await postMessage(CHANNEL_ID, content);
+      log('Posted rotating message successfully.');
+      console.log('summary::posted rotating message (no messages found)');
+      console.log(`window::${since.toISOString()}..${now.toISOString()}`);
+      return;
+    }
+    
     const ai = await summarizeWithOpenAI(nonBot);
     log(`OpenAI summary result: ${ai ? 'success' : 'failed or skipped'}`);
     if (ai) {
