@@ -43,8 +43,8 @@ async function fetchNewsFromNewsAPI() {
       const params = new URLSearchParams({
         q: query.q,
         language: query.language,
-        pageSize: '8',
-        sortBy: 'publishedAt',
+        pageSize: '15',
+        sortBy: 'popularity',  // popularityで注目度の高いものを優先
       });
       log(`Trying NewsAPI with query: ${query.q} (${query.language})`);
       
@@ -74,7 +74,8 @@ async function fetchNewsFromNewsAPI() {
       
       if (items.length > 0) {
         log(`NewsAPI success: found ${items.length} articles`);
-        return items.slice(0, 5);
+        // 最も注目度の高い3件を返す
+        return items.slice(0, 3);
       }
     } catch (err) {
       log(`NewsAPI exception: ${err.message}`);
@@ -92,7 +93,7 @@ function fallbackFormat(items) {
   if (!items.length) {
     return `${head}\n\n速報的に概要のみ：今日は目立ったニュースが拾えなかったぞ。別ソースも当たってみるね（Impact: 低）`;
   }
-  const bullets = items.slice(0, 5).map(i => `- ${i.title}：${(i.summary || '詳細は本文で確認してね').replace(/\n/g, ' ')}  \n  ${i.url}`).join('\n');
+  const bullets = items.slice(0, 3).map(i => `- ${i.title}：${(i.summary || '詳細は本文で確認してね').replace(/\n/g, ' ')}  \n  ${i.url}`).join('\n');
   const tail = `時間がない人は、最初の1本だけでもOK。今日もいい一歩にしようね ☕`;
   return `${head}\n\n${bullets}\n\n${tail}`;
 }
@@ -101,7 +102,7 @@ async function summarizeWithOpenAI(rawItems) {
   if (!OPENAI_API_KEY || !rawItems.length) return null;
   const date = new Date();
   const theme = '生成AI/AI政策/産業導入の動き';
-  const trimmed = rawItems.slice(0, 5).map(i => ({
+  const trimmed = rawItems.slice(0, 3).map(i => ({
     title: i.title?.slice(0, 120) || '',
     url: i.url,
     summary: (i.summary || '').replace(/\n/g, ' ').slice(0, 280),
@@ -110,7 +111,7 @@ async function summarizeWithOpenAI(rawItems) {
     model: 'gpt-4o-mini',
     messages: [
       { role: 'system', content: 'You are a Japanese tech editor who writes concise, accurate daily AI news digests for Discord. Avoid hype.' },
-      { role: 'user', content: `以下のニュースから本日の要点を3〜5本に整理し、指示フォーマットで日本語で出力。\n- 日付: ${date.toLocaleDateString('ja-JP')}\n- テーマヒント: ${theme}\n- 形式: 導入1行→箇条書き3〜5件（各1〜2行+リンク）→締め。350〜650文字。煽らず冷静に。${JSON.stringify(trimmed, null, 2)}` },
+      { role: 'user', content: `以下のニュースから本日の最も注目を集めている3件を厳選し、指示フォーマットで日本語で出力。\n- 日付: ${date.toLocaleDateString('ja-JP')}\n- テーマヒント: ${theme}\n- 形式: 導入1行→箇条書き3件のみ（各1〜2行+リンク）→締め。300〜500文字。煽らず冷静に。${JSON.stringify(trimmed, null, 2)}` },
     ],
     temperature: 0.4,
     max_tokens: 600,
