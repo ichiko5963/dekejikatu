@@ -138,19 +138,40 @@ async function fetchNewsFromBraveAPI() {
       
       const data = await resp.json();
       
+      // デバッグ用：レスポンス構造をログに記録
+      log(`Brave API response structure: ${JSON.stringify(Object.keys(data)).slice(0, 200)}`);
+      
       // Brave APIのレスポンス形式に対応
-      if (data.web && data.web.results && data.web.results.length > 0) {
-        const items = data.web.results.map(result => ({
+      let results = [];
+      
+      // パターン1: data.web.results
+      if (data.web && data.web.results && Array.isArray(data.web.results)) {
+        results = data.web.results;
+        log(`Found ${results.length} results in data.web.results`);
+      }
+      // パターン2: data.results
+      else if (data.results && Array.isArray(data.results)) {
+        results = data.results;
+        log(`Found ${results.length} results in data.results`);
+      }
+      // パターン3: data.news (ニュース検索の場合)
+      else if (data.news && Array.isArray(data.news)) {
+        results = data.news;
+        log(`Found ${results.length} results in data.news`);
+      }
+      
+      if (results.length > 0) {
+        const items = results.map(result => ({
           title: result.title || '',
           url: result.url || '',
           summary: result.description || result.meta_description || '',
-          publishedAt: result.age || '',
+          publishedAt: result.age || result.published_at || '',
         })).filter(item => item.title && item.url && !sentUrls.has(item.url));
         
         allItems.push(...items);
-        log(`Found ${items.length} new articles from Brave API for query: ${query}`);
+        log(`Found ${items.length} new articles from Brave API for query: ${query} (total: ${allItems.length})`);
       } else {
-        log(`Brave API returned no results for query: ${query}`);
+        log(`Brave API returned no results for query: ${query}. Response keys: ${Object.keys(data).join(', ')}`);
       }
       
     } catch (err) {
@@ -427,25 +448,59 @@ async function postToDiscord(channelId, content) {
 
     // Brave APIを優先的に使用（AI会社・ツールのアップデート情報）
     let raw = [];
+    let braveApiFailed = false;
     
     if (BRAVE_API_KEY) {
       log('Using Brave API to fetch AI company and tool updates...');
-      raw = await fetchNewsFromBraveAPI();
-      log(`Fetched ${raw.length} items from Brave API`);
+      try {
+        raw = await fetchNewsFromBraveAPI();
+        log(`Brave API result: ${raw.length} items fetched`);
+        
+        if (raw.length === 0) {
+          log('Brave API returned 0 items, but API call succeeded. Will try fallback sources.');
+          braveApiFailed = true;
+        }
+      } catch (err) {
+        log(`Brave API failed with error: ${err.message}`);
+        braveApiFailed = true;
+      }
+    } else {
+      log('Brave API key not set, using fallback sources');
+      braveApiFailed = true;
     }
     
-    // Brave APIで取得できなかった場合、NewsAPIを試す
-    if (raw.length === 0 && NEWS_API_KEY) {
-      log('Brave API returned no results, trying NewsAPI...');
-      raw = await fetchNewsFromNewsAPI();
-      log(`Fetched ${raw.length} items from NewsAPI for today`);
-    }
-    
-    // NewsAPIでも取得できなかった場合、Google News RSSから取得
-    if (raw.length === 0) {
-      log('NewsAPI returned no results, trying Google News RSS...');
-      raw = await fetchNewsFromGoogleNewsRSS();
-      log(`Fetched ${raw.length} items from Google News RSS`);
+    // Brave APIが失敗したか、結果が0件の場合のみフォールバック
+    if (braveApiFailed || raw.length === 0) {
+      if (NEWS_API_KEY) {
+        log('Trying NewsAPI as fallback...');
+        try {
+          const newsApiResults = await fetchNewsFromNewsAPI();
+          if (newsApiResults.length > 0) {
+            raw = newsApiResults;
+            log(`NewsAPI fallback success: ${raw.length} items fetched`);
+          } else {
+            log('NewsAPI also returned 0 items');
+          }
+        } catch (err) {
+          log(`NewsAPI fallback failed: ${err.message}`);
+        }
+      }
+      
+      // NewsAPIでも取得できなかった場合、Google News RSSから取得
+      if (raw.length === 0) {
+        log('Trying Google News RSS as final fallback...');
+        try {
+          const rssResults = await fetchNewsFromGoogleNewsRSS();
+          if (rssResults.length > 0) {
+            raw = rssResults;
+            log(`Google News RSS fallback success: ${raw.length} items fetched`);
+          } else {
+            log('Google News RSS also returned 0 items');
+          }
+        } catch (err) {
+          log(`Google News RSS fallback failed: ${err.message}`);
+        }
+      }
     }
 
     if (raw.length === 0) {
