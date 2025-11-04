@@ -379,8 +379,8 @@ async function summarizeWithOpenAI(rawItems) {
   const payload = {
     model: 'gpt-4o-mini',
     messages: [
-      { role: 'system', content: 'You are a Japanese tech editor who writes concise, accurate daily AI news digests for Discord. Avoid hype. Always mention the specific date of the news.' },
-      { role: 'user', content: `以下のニュースは${jstDate}（本日）に公開された最新のAI関連ニュースです。本日の最も注目を集めている3件を厳選し、指示フォーマットで日本語で出力。\n- 日付: ${jstDate}（必ず明記）\n- テーマヒント: ${theme}\n- 形式: 導入1行（日付を含む）→箇条書き3件のみ（各1〜2行+リンク）→締め。300〜500文字。煽らず冷静に。必ず「本日${jstDate}の」という表現を含める。\n\n${JSON.stringify(trimmed, null, 2)}` },
+      { role: 'system', content: 'You are a Japanese tech editor who writes concise, accurate daily AI news digests for Discord. Focus on updates from major AI companies (OpenAI, Google/Gemini, Anthropic/Claude) and popular AI tools. Avoid hype. Always mention the specific date of the news.' },
+      { role: 'user', content: `以下のニュースは${jstDate}（本日）に公開された最新のAI関連ニュースです。特にOpenAI、Google Gemini、Anthropic Claude、その他の有名なAIツールのアップデート情報を重視してください。本日の最も注目を集めている3件を厳選し、指示フォーマットで日本語で出力。\n- 日付: ${jstDate}（必ず明記）\n- テーマヒント: AI会社・ツールのアップデート情報（OpenAI、Gemini、Claude、AIツールなど）\n- 形式: 導入1行（日付を含む）→箇条書き3件のみ（各1〜2行+リンク）→締め。300〜500文字。煽らず冷静に。必ず「本日${jstDate}の」という表現を含める。\n\n${JSON.stringify(trimmed, null, 2)}` },
     ],
     temperature: 0.4,
     max_tokens: 600,
