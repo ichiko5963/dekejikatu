@@ -15,6 +15,8 @@ const NEWS_API_KEY = process.env.NEWS_API_KEY || process.env.NEWS_API_KEY_ENV; /
 
 const LOG_DIR = 'DEJIRYU_DISCORD/logs';
 const LOG_FILE = `${LOG_DIR}/ai-news.log`;
+const DATA_DIR = 'DEJIRYU_DISCORD/data';
+const SENT_URLS_FILE = `${DATA_DIR}/ai-news-sent.json`;
 
 function log(line) {
   fs.mkdirSync(LOG_DIR, { recursive: true });
@@ -26,11 +28,77 @@ function assertEnv(name, value) {
   if (!value) throw new Error(`Missing required env: ${name}`);
 }
 
+// 実行日のJSTでの日付範囲を計算（その日の00:00:00から23:59:59まで）
+function getTodayDateRange() {
+  const now = new Date();
+  // UTC時刻を取得
+  const utcNow = now.getTime();
+  
+  // JSTに変換（UTC+9時間）
+  const jstOffset = 9 * 60 * 60 * 1000; // 9時間をミリ秒に変換
+  const jstNow = new Date(utcNow + jstOffset);
+  
+  // JSTでの年月日を取得
+  const jstYear = jstNow.getUTCFullYear();
+  const jstMonth = jstNow.getUTCMonth();
+  const jstDate = jstNow.getUTCDate();
+  
+  // その日の00:00:00 JSTをUTCに変換
+  const startJST = new Date(Date.UTC(jstYear, jstMonth, jstDate, 0, 0, 0));
+  const startUTC = new Date(startJST.getTime() - jstOffset);
+  
+  // その日の23:59:59 JSTをUTCに変換
+  const endJST = new Date(Date.UTC(jstYear, jstMonth, jstDate, 23, 59, 59, 999));
+  const endUTC = new Date(endJST.getTime() - jstOffset);
+  
+  // NewsAPIはISO 8601形式を要求（YYYY-MM-DDTHH:mm:ss形式）
+  const fromStr = startUTC.toISOString().slice(0, 19); // YYYY-MM-DDTHH:mm:ss
+  const toStr = endUTC.toISOString().slice(0, 19);
+  
+  return { from: fromStr, to: toStr };
+}
+
+// 過去に送信したURLを読み込む
+function loadSentUrls() {
+  try {
+    if (fs.existsSync(SENT_URLS_FILE)) {
+      const content = fs.readFileSync(SENT_URLS_FILE, 'utf8');
+      const data = JSON.parse(content);
+      return new Set(data.urls || []);
+    }
+  } catch (err) {
+    log(`Failed to load sent URLs: ${err.message}`);
+  }
+  return new Set();
+}
+
+// 送信したURLを保存（最新100件まで保持）
+function saveSentUrls(urls) {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    const urlArray = Array.from(urls);
+    // 最新100件だけ保持（古いものを削除）
+    const limited = urlArray.slice(-100);
+    fs.writeFileSync(SENT_URLS_FILE, JSON.stringify({ urls: limited }, null, 2));
+    log(`Saved ${limited.length} sent URLs to ${SENT_URLS_FILE}`);
+  } catch (err) {
+    log(`Failed to save sent URLs: ${err.message}`);
+  }
+}
+
 async function fetchNewsFromNewsAPI() {
   if (!NEWS_API_KEY) {
     log('NewsAPI key not set, skipping NewsAPI fetch');
     return [];
   }
+  
+  // 実行日のJSTでの日付範囲を取得
+  const dateRange = getTodayDateRange();
+  log(`Fetching news for date range: ${dateRange.from} to ${dateRange.to} (JST today)`);
+  
+  // 過去に送信したURLを読み込む
+  const sentUrls = loadSentUrls();
+  log(`Loaded ${sentUrls.size} previously sent URLs`);
   
   // Try Japanese first, then English as fallback
   const queries = [
@@ -43,10 +111,12 @@ async function fetchNewsFromNewsAPI() {
       const params = new URLSearchParams({
         q: query.q,
         language: query.language,
-        pageSize: '15',
+        pageSize: '20', // 多めに取得して重複除外後に選択
         sortBy: 'popularity',  // popularityで注目度の高いものを優先
+        from: dateRange.from,  // その日の00:00:00
+        to: dateRange.to,      // その日の23:59:59
       });
-      log(`Trying NewsAPI with query: ${query.q} (${query.language})`);
+      log(`Trying NewsAPI with query: ${query.q} (${query.language}), date range: ${dateRange.from} to ${dateRange.to}`);
       
       const resp = await fetch(`https://newsapi.org/v2/everything?${params.toString()}`, {
         headers: { 'X-Api-Key': NEWS_API_KEY },
@@ -66,16 +136,24 @@ async function fetchNewsFromNewsAPI() {
         continue;
       }
       
-      const items = (data.articles || []).map(a => ({
-        title: a.title,
-        url: a.url,
-        summary: a.description || a.content?.slice(0, 200) || '',
-      })).filter(a => a.title && a.url); // filter out invalid
+      // 有効な記事を取得し、過去に送信していないものだけをフィルタ
+      const items = (data.articles || [])
+        .map(a => ({
+          title: a.title,
+          url: a.url,
+          summary: a.description || a.content?.slice(0, 200) || '',
+          publishedAt: a.publishedAt,
+        }))
+        .filter(a => a.title && a.url) // filter out invalid
+        .filter(a => !sentUrls.has(a.url)); // 過去に送信していないものだけ
+      
+      log(`Found ${items.length} new articles (after filtering duplicates)`);
       
       if (items.length > 0) {
-        log(`NewsAPI success: found ${items.length} articles`);
         // 最も注目度の高い3件を返す
-        return items.slice(0, 3);
+        const selected = items.slice(0, 3);
+        log(`NewsAPI success: selected ${selected.length} articles for today`);
+        return selected;
       }
     } catch (err) {
       log(`NewsAPI exception: ${err.message}`);
@@ -83,15 +161,16 @@ async function fetchNewsFromNewsAPI() {
     }
   }
   
-  log('NewsAPI: all queries failed or returned no results');
+  log('NewsAPI: all queries failed or returned no results for today');
   return [];
 }
 
 function fallbackFormat(items) {
   const date = new Date();
-  const head = `おはよう、デジリューだよ。今日はAIの動きが気になる朝。さくっと行こっか。`;
+  const jstDate = date.toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo' });
+  const head = `おはよう、デジリューだよ。${jstDate}はAIの動きが気になる朝。さくっと行こっか。`;
   if (!items.length) {
-    return `${head}\n\n速報的に概要のみ：今日は目立ったニュースが拾えなかったぞ。別ソースも当たってみるね（Impact: 低）`;
+    return `${head}\n\n速報的に概要のみ：${jstDate}は目立ったニュースが拾えなかったぞ。別ソースも当たってみるね（Impact: 低）`;
   }
   const bullets = items.slice(0, 3).map(i => `- ${i.title}：${(i.summary || '詳細は本文で確認してね').replace(/\n/g, ' ')}  \n  ${i.url}`).join('\n');
   const tail = `時間がない人は、最初の1本だけでもOK。今日もいい一歩にしようね ☕`;
@@ -101,17 +180,19 @@ function fallbackFormat(items) {
 async function summarizeWithOpenAI(rawItems) {
   if (!OPENAI_API_KEY || !rawItems.length) return null;
   const date = new Date();
+  const jstDate = date.toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo' });
   const theme = '生成AI/AI政策/産業導入の動き';
   const trimmed = rawItems.slice(0, 3).map(i => ({
     title: i.title?.slice(0, 120) || '',
     url: i.url,
     summary: (i.summary || '').replace(/\n/g, ' ').slice(0, 280),
+    publishedAt: i.publishedAt,
   }));
   const payload = {
     model: 'gpt-4o-mini',
     messages: [
-      { role: 'system', content: 'You are a Japanese tech editor who writes concise, accurate daily AI news digests for Discord. Avoid hype.' },
-      { role: 'user', content: `以下のニュースから本日の最も注目を集めている3件を厳選し、指示フォーマットで日本語で出力。\n- 日付: ${date.toLocaleDateString('ja-JP')}\n- テーマヒント: ${theme}\n- 形式: 導入1行→箇条書き3件のみ（各1〜2行+リンク）→締め。300〜500文字。煽らず冷静に。${JSON.stringify(trimmed, null, 2)}` },
+      { role: 'system', content: 'You are a Japanese tech editor who writes concise, accurate daily AI news digests for Discord. Avoid hype. Always mention the specific date of the news.' },
+      { role: 'user', content: `以下のニュースは${jstDate}（本日）に公開された最新のAI関連ニュースです。本日の最も注目を集めている3件を厳選し、指示フォーマットで日本語で出力。\n- 日付: ${jstDate}（必ず明記）\n- テーマヒント: ${theme}\n- 形式: 導入1行（日付を含む）→箇条書き3件のみ（各1〜2行+リンク）→締め。300〜500文字。煽らず冷静に。必ず「本日${jstDate}の」という表現を含める。\n\n${JSON.stringify(trimmed, null, 2)}` },
     ],
     temperature: 0.4,
     max_tokens: 600,
@@ -152,16 +233,36 @@ async function postToDiscord(channelId, content) {
     assertEnv('DISCORD_BOT_TOKEN', BOT_TOKEN);
     assertEnv('DISCORD_CHANNEL_ID', CHANNEL_ID);
 
-    log(`Starting AI news fetch. NEWS_API_KEY present: ${!!NEWS_API_KEY}, OPENAI_API_KEY present: ${!!OPENAI_API_KEY}`);
+    const date = new Date();
+    const jstDate = date.toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo' });
+    log(`Starting AI news fetch for ${jstDate}. NEWS_API_KEY present: ${!!NEWS_API_KEY}, OPENAI_API_KEY present: ${!!OPENAI_API_KEY}`);
 
     const raw = await fetchNewsFromNewsAPI();
-    log(`Fetched ${raw.length} items from NewsAPI`);
+    log(`Fetched ${raw.length} items from NewsAPI for today`);
+
+    if (raw.length === 0) {
+      log('No new articles found for today. Posting fallback message.');
+      const msg = fallbackFormat([]);
+      await postToDiscord(CHANNEL_ID, msg);
+      log('Posted fallback message');
+      return;
+    }
+
+    // 送信するURLを記録
+    const sentUrls = loadSentUrls();
+    raw.forEach(item => {
+      if (item.url) {
+        sentUrls.add(item.url);
+      }
+    });
+    saveSentUrls(sentUrls);
+    log(`Marked ${raw.length} URLs as sent`);
 
     const ai = await summarizeWithOpenAI(raw);
     const msg = ai || fallbackFormat(raw);
 
     await postToDiscord(CHANNEL_ID, msg);
-    log('Posted ai-news successfully');
+    log(`Posted ai-news successfully for ${jstDate}`);
   } catch (e) {
     log(`ERROR: ${e.stack || e.message}`);
     console.error(e);
