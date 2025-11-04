@@ -11,7 +11,8 @@ process.env.TZ = process.env.TZ || 'Asia/Tokyo';
 const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const CHANNEL_ID = process.env.DISCORD_CHANNEL_ID || process.env.AI_NEWS_CHANNEL_ID; // fallback alias
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const NEWS_API_KEY = process.env.NEWS_API_KEY || process.env.NEWS_API_KEY_ENV; // support both names
+const NEWS_API_KEY = process.env.NEWS_API_KEY || process.env.NEWS_API_KEY_ENV; // support both names (legacy)
+const BRAVE_API_KEY = process.env.BRAVE_API_KEY;
 
 const LOG_DIR = 'DEJIRYU_DISCORD/logs';
 const LOG_FILE = `${LOG_DIR}/ai-news.log`;
@@ -86,7 +87,102 @@ function saveSentUrls(urls) {
   }
 }
 
-// Google News RSSフィードからニュースを取得
+// Brave Search APIからニュースを取得（AI会社・ツールのアップデート情報）
+async function fetchNewsFromBraveAPI() {
+  if (!BRAVE_API_KEY) {
+    log('Brave API key not set, skipping Brave API fetch');
+    return [];
+  }
+  
+  const sentUrls = loadSentUrls();
+  log(`Loaded ${sentUrls.size} previously sent URLs`);
+  
+  // 有名なAI会社・ツールのアップデート情報を検索
+  const queries = [
+    'OpenAI ChatGPT update news',
+    'Google Gemini update news',
+    'Anthropic Claude update news',
+    'AI tools update news',
+    'generative AI update news'
+  ];
+  
+  const allItems = [];
+  
+  for (const query of queries) {
+    try {
+      // Brave Search APIのWeb検索エンドポイント（最新のニュースを検索）
+      const params = new URLSearchParams({
+        q: query,
+        count: 10, // 各クエリから最大10件取得
+        search_lang: 'ja',
+        country: 'JP',
+        safesearch: 'moderate',
+        freshness: 'pd', // past day (過去24時間)
+        result_filter: 'news', // ニュース結果を優先
+      });
+      
+      log(`Fetching Brave API news: ${query}`);
+      
+      const resp = await fetch(`https://api.search.brave.com/res/v1/web/search?${params.toString()}`, {
+        headers: {
+          'X-Subscription-Token': BRAVE_API_KEY,
+          'Accept': 'application/json',
+        },
+      });
+      
+      if (!resp.ok) {
+        const text = await resp.text();
+        log(`Brave API HTTP ${resp.status}: ${text.slice(0, 200)}`);
+        continue;
+      }
+      
+      const data = await resp.json();
+      
+      // Brave APIのレスポンス形式に対応
+      if (data.web && data.web.results && data.web.results.length > 0) {
+        const items = data.web.results.map(result => ({
+          title: result.title || '',
+          url: result.url || '',
+          summary: result.description || result.meta_description || '',
+          publishedAt: result.age || '',
+        })).filter(item => item.title && item.url && !sentUrls.has(item.url));
+        
+        allItems.push(...items);
+        log(`Found ${items.length} new articles from Brave API for query: ${query}`);
+      } else {
+        log(`Brave API returned no results for query: ${query}`);
+      }
+      
+    } catch (err) {
+      log(`Brave API exception for ${query}: ${err.message}`);
+      continue;
+    }
+  }
+  
+  // 重複を除去（URLベース）
+  const uniqueItems = [];
+  const seenUrls = new Set();
+  for (const item of allItems) {
+    if (!seenUrls.has(item.url)) {
+      seenUrls.add(item.url);
+      uniqueItems.push(item);
+    }
+  }
+  
+  log(`Found ${uniqueItems.length} unique articles from Brave API`);
+  
+  if (uniqueItems.length > 0) {
+    // 最新の3件を返す
+    const selected = uniqueItems.slice(0, 3);
+    log(`Brave API success: selected ${selected.length} articles`);
+    return selected;
+  }
+  
+  log('Brave API: no articles found');
+  return [];
+}
+
+// Google News RSSフィードからニュースを取得（フォールバック）
 async function fetchNewsFromGoogleNewsRSS() {
   const sentUrls = loadSentUrls();
   log(`Loaded ${sentUrls.size} previously sent URLs`);
@@ -327,13 +423,25 @@ async function postToDiscord(channelId, content) {
 
     const date = new Date();
     const jstDate = date.toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo' });
-    log(`Starting AI news fetch for ${jstDate}. NEWS_API_KEY present: ${!!NEWS_API_KEY}, OPENAI_API_KEY present: ${!!OPENAI_API_KEY}`);
+    log(`Starting AI news fetch for ${jstDate}. BRAVE_API_KEY present: ${!!BRAVE_API_KEY}, NEWS_API_KEY present: ${!!NEWS_API_KEY}, OPENAI_API_KEY present: ${!!OPENAI_API_KEY}`);
 
-    // NewsAPIを試す、失敗したらGoogle News RSSにフォールバック
-    let raw = await fetchNewsFromNewsAPI();
-    log(`Fetched ${raw.length} items from NewsAPI for today`);
+    // Brave APIを優先的に使用（AI会社・ツールのアップデート情報）
+    let raw = [];
     
-    // NewsAPIで取得できなかった場合、Google News RSSから取得
+    if (BRAVE_API_KEY) {
+      log('Using Brave API to fetch AI company and tool updates...');
+      raw = await fetchNewsFromBraveAPI();
+      log(`Fetched ${raw.length} items from Brave API`);
+    }
+    
+    // Brave APIで取得できなかった場合、NewsAPIを試す
+    if (raw.length === 0 && NEWS_API_KEY) {
+      log('Brave API returned no results, trying NewsAPI...');
+      raw = await fetchNewsFromNewsAPI();
+      log(`Fetched ${raw.length} items from NewsAPI for today`);
+    }
+    
+    // NewsAPIでも取得できなかった場合、Google News RSSから取得
     if (raw.length === 0) {
       log('NewsAPI returned no results, trying Google News RSS...');
       raw = await fetchNewsFromGoogleNewsRSS();

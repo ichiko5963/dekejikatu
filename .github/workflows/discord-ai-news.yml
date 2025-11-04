@@ -42,6 +42,7 @@ jobs:
           DISCORD_CHANNEL_ID: ${{ secrets.AI_NEWS }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           NEWS_API_KEY: ${{ secrets.NEWS_API_KEY_ENV }}
+          BRAVE_API_KEY: ${{ secrets.BRAVE_API_KEY }}
         run: |
           echo "Current commit: $(git rev-parse HEAD)"
           echo "Checking script paths..."
@@ -77,5 +78,6 @@ jobs:
           echo "- DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN != '' }}" >> $GITHUB_STEP_SUMMARY
           echo "- AI_NEWS: ${{ secrets.AI_NEWS != '' }}" >> $GITHUB_STEP_SUMMARY
           echo "- OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY != '' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- BRAVE_API_KEY: ${{ secrets.BRAVE_API_KEY != '' }}" >> $GITHUB_STEP_SUMMARY
           echo "- NEWS_API_KEY: ${{ secrets.NEWS_API_KEY_ENV != '' }}" >> $GITHUB_STEP_SUMMARY
           echo "Schedule (cron UTC): 0 22 * * * (JST 07:00)" >> $GITHUB_STEP_SUMMARY
