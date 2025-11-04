@@ -27,6 +27,15 @@ jobs:
         with:
           node-version: 18
 
+      - name: Restore sent URLs cache
+        id: cache-sent-urls
+        uses: actions/cache@v4
+        with:
+          path: DEJIRYU_DISCORD/data/ai-news-sent.json
+          key: ai-news-sent-urls-${{ github.repository }}
+          restore-keys: |
+            ai-news-sent-urls-${{ github.repository }}-
+
       - name: Post AI news
         env:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
@@ -37,7 +46,7 @@ jobs:
           echo "Current commit: $(git rev-parse HEAD)"
           echo "Checking script paths..."
           ls -la DEJIRYU_DISCORD/scripts/ 2>/dev/null || ls -la scripts/ 2>/dev/null || echo "Scripts dir not found"
-          mkdir -p DEJIRYU_DISCORD/logs
+          mkdir -p DEJIRYU_DISCORD/logs DEJIRYU_DISCORD/data
           if [ -f DEJIRYU_DISCORD/scripts/discord-ai-news.js ]; then
             echo "Running: node DEJIRYU_DISCORD/scripts/discord-ai-news.js"
             node DEJIRYU_DISCORD/scripts/discord-ai-news.js || echo "ai-news failed with code $?" > DEJIRYU_DISCORD/logs/ainews.exit
@@ -48,6 +57,7 @@ jobs:
             echo "ai-news script not found"; exit 1
           fi
           echo "Script execution completed"
+          # Cache will be automatically saved by actions/cache@v4
 
       - name: Upload logs
         if: always()
