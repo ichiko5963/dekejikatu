@@ -86,6 +86,98 @@ function saveSentUrls(urls) {
   }
 }
 
+// Google News RSSフィードからニュースを取得
+async function fetchNewsFromGoogleNewsRSS() {
+  const sentUrls = loadSentUrls();
+  log(`Loaded ${sentUrls.size} previously sent URLs`);
+  
+  // Google News RSSフィードのURL（AI関連）
+  const queries = [
+    'artificial+intelligence',
+    'generative+AI',
+    'AI+news'
+  ];
+  
+  const allItems = [];
+  
+  for (const query of queries) {
+    try {
+      // Google News RSSフィードURL
+      const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=ja&gl=JP&ceid=JP:ja`;
+      log(`Fetching Google News RSS: ${query}`);
+      
+      const resp = await fetch(rssUrl);
+      if (!resp.ok) {
+        log(`Google News RSS HTTP ${resp.status}`);
+        continue;
+      }
+      
+      const xmlText = await resp.text();
+      
+      // 簡易的なRSSパース（正規表現ベース）
+      const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+      let match;
+      
+      while ((match = itemRegex.exec(xmlText)) !== null && allItems.length < 30) {
+        const itemXml = match[1];
+        
+        // タイトルを抽出
+        const titleMatch = itemXml.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/);
+        const title = titleMatch ? (titleMatch[1] || titleMatch[2]).replace(/&lt;.*?&gt;/g, '').trim() : '';
+        
+        // リンクを抽出
+        const linkMatch = itemXml.match(/<link>(.*?)<\/link>/);
+        const link = linkMatch ? linkMatch[1].trim() : '';
+        
+        // 説明を抽出
+        const descMatch = itemXml.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>|<description>(.*?)<\/description>/);
+        const description = descMatch ? (descMatch[1] || descMatch[2]).replace(/&lt;.*?&gt;/g, '').replace(/<[^>]*>/g, '').trim() : '';
+        
+        // 日付を抽出
+        const pubMatch = itemXml.match(/<pubDate>(.*?)<\/pubDate>/);
+        const pubDate = pubMatch ? pubMatch[1].trim() : '';
+        
+        if (title && link && !sentUrls.has(link)) {
+          allItems.push({
+            title: title,
+            url: link,
+            summary: description.slice(0, 200) || '',
+            publishedAt: pubDate,
+          });
+        }
+      }
+      
+      log(`Parsed ${allItems.length} items from Google News RSS for query: ${query}`);
+      
+    } catch (err) {
+      log(`Google News RSS exception for ${query}: ${err.message}`);
+      continue;
+    }
+  }
+  
+  // 重複を除去（URLベース）
+  const uniqueItems = [];
+  const seenUrls = new Set();
+  for (const item of allItems) {
+    if (!seenUrls.has(item.url)) {
+      seenUrls.add(item.url);
+      uniqueItems.push(item);
+    }
+  }
+  
+  log(`Found ${uniqueItems.length} unique articles from Google News RSS`);
+  
+  if (uniqueItems.length > 0) {
+    // 最新の3件を返す
+    const selected = uniqueItems.slice(0, 3);
+    log(`Google News RSS success: selected ${selected.length} articles`);
+    return selected;
+  }
+  
+  log('Google News RSS: no articles found');
+  return [];
+}
+
 async function fetchNewsFromNewsAPI() {
   if (!NEWS_API_KEY) {
     log('NewsAPI key not set, skipping NewsAPI fetch');
@@ -237,8 +329,16 @@ async function postToDiscord(channelId, content) {
     const jstDate = date.toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo' });
     log(`Starting AI news fetch for ${jstDate}. NEWS_API_KEY present: ${!!NEWS_API_KEY}, OPENAI_API_KEY present: ${!!OPENAI_API_KEY}`);
 
-    const raw = await fetchNewsFromNewsAPI();
+    // NewsAPIを試す、失敗したらGoogle News RSSにフォールバック
+    let raw = await fetchNewsFromNewsAPI();
     log(`Fetched ${raw.length} items from NewsAPI for today`);
+    
+    // NewsAPIで取得できなかった場合、Google News RSSから取得
+    if (raw.length === 0) {
+      log('NewsAPI returned no results, trying Google News RSS...');
+      raw = await fetchNewsFromGoogleNewsRSS();
+      log(`Fetched ${raw.length} items from Google News RSS`);
+    }
 
     if (raw.length === 0) {
       log('No new articles found for today. Posting fallback message.');
